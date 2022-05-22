@@ -20,26 +20,26 @@ func (todos *Todos) AddTodo(todo model.Todo) (model.Todo, error) {
 	return todo, err
 }
 
-func (todos *Todos) DeleteTodo(id string) error {
+func (todos *Todos) DeleteTodo(ctx context.Context, id string) error {
 	collection := todos.client.Database("todos").Collection("todos")
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
-	_, err = collection.DeleteOne(context.Background(), model.Todo{
+	_, err = collection.DeleteOne(ctx, model.Todo{
 		ID: objectID,
 	})
 	return err
 }
 
-func (todos *Todos) GetTodo(id string) (model.Todo, error) {
+func (todos *Todos) GetTodo(ctx context.Context, id string) (model.Todo, error) {
 	todo := model.Todo{}
 	collection := todos.client.Database("todos").Collection("todos")
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return model.Todo{}, err
 	}
-	err = collection.FindOne(context.Background(), bson.M{
+	err = collection.FindOne(ctx, bson.M{
 		"_id": objectID,
 	}).Decode(&todo)
 	return todo, err
@@ -58,13 +58,13 @@ func (todos *Todos) GetTodos() ([]model.Todo, error) {
 	return todoList, nil
 }
 
-func (todos *Todos) ToggleTodo(id string) error {
+func (todos *Todos) ToggleTodo(ctx context.Context, id string) error {
 	collection := todos.client.Database("todos").Collection("todos")
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
-	todo, err := todos.GetTodo(id)
+	todo, err := todos.GetTodo(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -73,6 +73,18 @@ func (todos *Todos) ToggleTodo(id string) error {
 	}, bson.M{
 		"$set": bson.M{
 			"isDone": !todo.IsDone,
+		},
+	})
+	return err
+}
+
+func (todos *Todos) UpdateTodo(ctx context.Context, todo model.Todo) error {
+	collection := todos.client.Database("todos").Collection("todos")
+	_, err := collection.UpdateOne(ctx, bson.M{
+		"_id": todo.ID,
+	}, bson.M{
+		"$set": bson.M{
+			"text": todo.Todo,
 		},
 	})
 	return err
