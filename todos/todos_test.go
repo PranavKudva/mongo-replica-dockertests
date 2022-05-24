@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/mainawycliffe/todo-dockertest-golang-mongo-demo/model"
+	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -22,43 +24,40 @@ const MONGO_INITDB_ROOT_PASSWORD = "password"
 
 func TestMain(m *testing.M) {
 	// Setup
-	// pool, err := dockertest.NewPool("")
-	// if err != nil {
-	// 	log.Fatalf("Could not connect to docker: %s", err)
-	// }
-	// environmentVariables := []string{
-	// 	"MONGO_INITDB_ROOT_USERNAME=" + MONGO_INITDB_ROOT_USERNAME,
-	// 	"MONGO_INITDB_ROOT_PASSWORD=" + MONGO_INITDB_ROOT_PASSWORD,
-	// }
-	// resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-	// 	Repository: "mongo",
-	// 	Tag:        "5.0",
-	// 	Env:        environmentVariables,
-	// }, func(config *docker.HostConfig) {
-	// 	// set AutoRemove to true so that stopped container goes away by itself
-	// 	config.AutoRemove = true
-	// 	config.RestartPolicy = docker.RestartPolicy{
-	// 		Name: "no",
-	// 	}
-	// })
-	// if err != nil {
-	// 	log.Fatalf("Could not start resource: %s", err)
-	// }
-	// exponential backoff-retry, because the application in the container might not be ready to accept connections yet
-	// err = pool.Retry(func() error {
-	var err error
-	db, err = mongo.Connect(
-		context.TODO(),
-		options.Client().ApplyURI(
-			fmt.Sprintf("mongodb://%s:%s@localhost:27017/todos", MONGO_INITDB_ROOT_USERNAME, MONGO_INITDB_ROOT_PASSWORD),
-		),
-	)
+	pool, err := dockertest.NewPool("")
 	if err != nil {
-		log.Fatalf("Could not connect to mongo: %s", err)
+		log.Fatalf("Could not connect to docker: %s", err)
 	}
-	err = db.Ping(context.TODO(), nil)
+
+	resource, err := pool.BuildAndRunWithOptions("../Dockerfile", &dockertest.RunOptions{
+		Name:         "todo-tests",
+		PortBindings: map[docker.Port][]docker.PortBinding{"27017/tcp": {{"127.0.0.1", "27017"}}},
+	}, func(config *docker.HostConfig) {
+		// set AutoRemove to true so that stopped container goes away by itself
+		config.AutoRemove = true
+		config.RestartPolicy = docker.RestartPolicy{
+			Name: "no",
+		}
+	})
 	if err != nil {
-		log.Fatalf("Could not connect to mongo: %s", err)
+		log.Fatalf("Could not start resource: %s", err)
+	}
+	// exponential backoff-retry, because the application in the container might not be ready to accept connections yet
+	err = pool.Retry(func() error {
+		var err error
+		db, err = mongo.Connect(
+			context.TODO(),
+			options.Client().ApplyURI(
+				fmt.Sprintf("mongodb://localhost:%s", resource.GetPort("27017/tcp")),
+			),
+		)
+		if err != nil {
+			return err
+		}
+		return db.Ping(context.TODO(), nil)
+	})
+	if err != nil {
+		log.Fatalf("Could not connect to docker: %s", err)
 	}
 
 	// Run tests
@@ -66,9 +65,9 @@ func TestMain(m *testing.M) {
 
 	// Teardown
 	// When you're done, kill and remove the container
-	// if err = pool.Purge(resource); err != nil {
-	// 	log.Fatalf("Could not purge resource: %s", err)
-	// }
+	if err = pool.Purge(resource); err != nil {
+		log.Fatalf("Could not purge resource: %s", err)
+	}
 
 	// disconnect mongodb client
 	if err = db.Disconnect(context.TODO()); err != nil {
